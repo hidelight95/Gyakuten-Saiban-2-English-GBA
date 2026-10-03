@@ -1,0 +1,56 @@
+name: Build GBA ROM
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v6
+
+      - name: Clone upstream disassembly
+        run: |
+          git clone --depth 1 https://github.com/atasro2/pwaa2.git upstream
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git gcc-multilib python3
+
+      - name: Build agbcc toolchain
+        working-directory: upstream
+        run: |
+          git clone --depth 1 -b new_layout_with_libs https://github.com/luckytyphlosion/agbcc agbcc
+          cd agbcc
+          make
+          make install prefix=../
+          make install-sdk prefix=../
+
+      - name: Build project tools
+        working-directory: upstream
+        run: make tools
+
+      - name: Apply project patches
+        run: |
+          if [ -d patches ]; then
+            cp -a patches/. upstream/
+          fi
+
+      - name: Build ROM
+        working-directory: upstream
+        run: make
+
+      - name: Verify ROM checksum
+        working-directory: upstream
+        run: |
+          sha1sum pwaa2.gba
+          test "$(sha1sum pwaa2.gba | awk '{print $1}')" = "f7a156dbed52d3edb8104112ae40e6e2aaca57f9"
+
+      - name: Upload ROM artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: pwaa2-build
+          path: upstream/pwaa2.gba
